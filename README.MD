@@ -5,7 +5,7 @@ A collection of lightweight Go utilities for common development tasks.
 ## Installation
 
 ```bash
-go get github.com/yourusername/go-utils
+go get github.com/asam264/go-utils
 ```
 
 ## Modules
@@ -24,7 +24,7 @@ High-performance batch processing with automatic retry and Redis persistence sup
 **Basic Usage:**
 
 ```go
-import "github.com/yourusername/go-utils/batchwriter"
+import "github.com/asam264/go-utils/batchwriter"
 
 // Create a handler to process batches
 handler := func(items [][]byte) error {
@@ -46,7 +46,9 @@ if err != nil {
 }
 
 // Start processing
-bw.Start()
+if err := bw.Start(); err != nil {
+    panic(err)
+}
 defer bw.Shutdown(5 * time.Second)
 
 // Push data
@@ -58,7 +60,7 @@ bw.Push([]byte("your data"))
 ```go
 import (
     "github.com/redis/go-redis/v9"
-    "github.com/yourusername/go-utils/batchwriter"
+    "github.com/asam264/go-utils/batchwriter"
 )
 
 redisClient := redis.NewClient(&redis.Options{
@@ -84,6 +86,7 @@ bw.Start()
 | FlushInterval | time.Duration | 5s | Max time between flushes |
 | Handler | Handler | required | Batch processing function |
 | RedisClient | RedisClient | nil | Redis client for persistence |
+| RedisKeyPrefix | string | "batch_writer" | Redis key prefix for persistence |
 | Logger | Logger | noop | Custom logger |
 | MaxRetries | int | 5 | Retry attempts on failure |
 | BaseBackoff | time.Duration | 500ms | Initial retry delay |
@@ -93,19 +96,24 @@ bw.Start()
 **Logger Adapters:**
 
 ```go
+import (
+    "github.com/asam264/go-utils/batchwriter"
+    "github.com/asam264/go-utils/common"
+    "go.uber.org/zap"
+)
+
 // Zap logger
-import "go.uber.org/zap"
 logger, _ := zap.NewProduction()
 cfg.Logger = batchwriter.NewZapLoggerAdapter(logger)
 
 // Simple console logger
-cfg.Logger = batchwriter.NewSimpleLogger(true, true, true)
+cfg.Logger = common.NewSimpleLogger(true, true, true)
 
 // Custom logger (implement Logger interface)
 type MyLogger struct{}
-func (l *MyLogger) Info(msg string, fields ...batchwriter.Field) {}
-func (l *MyLogger) Warn(msg string, fields ...batchwriter.Field) {}
-func (l *MyLogger) Error(msg string, fields ...batchwriter.Field) {}
+func (l *MyLogger) Info(msg string, fields ...common.Field) {}
+func (l *MyLogger) Warn(msg string, fields ...common.Field) {}
+func (l *MyLogger) Error(msg string, fields ...common.Field) {}
 ```
 
 **Manager for Multiple Writers:**
@@ -115,8 +123,14 @@ manager := batchwriter.GetDefaultManager()
 
 // Register and start multiple writers
 for i := 0; i < 3; i++ {
-    bw, _ := batchwriter.New(cfg)
-    manager.RegisterAndStart(fmt.Sprintf("writer-%d", i), bw)
+    cfg.Name = fmt.Sprintf("writer-%d", i)
+    bw, err := batchwriter.New(cfg)
+    if err != nil {
+        panic(err)
+    }
+    if err := manager.RegisterAndStart(fmt.Sprintf("writer-%d", i), bw); err != nil {
+        panic(err)
+    }
 }
 
 // Get a specific writer
